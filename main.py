@@ -1,6 +1,8 @@
 import os
 from datetime import datetime, timedelta
 from typing import List, Optional
+from urllib.parse import urlparse
+
 
 import psycopg2
 from fastapi import FastAPI, Depends, HTTPException, status
