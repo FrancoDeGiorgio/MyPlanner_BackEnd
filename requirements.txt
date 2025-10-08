@@ -3,7 +3,7 @@ pydantic
 uvicorn
 psycopg2-binary # Driver per PostgreSQL
 python-jose[cryptography] # Per JWT
-passlib # Rimosso [bcrypt] per non forzare l'ultima versione
+passlib>=1.7.4 
 bcrypt<41.0.0 # Forza la versione compatibile
 python-dotenv # Utile per caricare le variabili d'ambiente localmente
 python-multipart # Necessario per gestire form data (OAuth2)
