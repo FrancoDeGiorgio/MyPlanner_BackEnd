@@ -1,0 +1,8 @@
+fastapi
+pydantic
+uvicorn
+psycopg2-binary # Driver per PostgreSQL
+python-jose[cryptography] # Per JWT
+passlib[bcrypt] # Per l'hashing delle password
+python-dotenv # Utile per caricare le variabili d'ambiente localmente
+python-multipart # Necessario per gestire form data (OAuth2)
