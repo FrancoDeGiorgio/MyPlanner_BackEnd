@@ -35,8 +35,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # Per l'hashing delle password
 pwd_context = CryptContext(
     schemes=["bcrypt"], 
-    deprecated="auto",
-    enable_pbkdf2=False
+    deprecated="auto"
     )
 
 # Schema per l'autenticazione OAuth2 (per la dependency)
