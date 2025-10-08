@@ -207,14 +207,16 @@ def execute_protected_query(
             
             # Esegui la query
             cur.execute(sql_query, params)
-            
+
+            result = None
             if fetch_one:
-                return cur.fetchone()
-            if fetch_all:
-                return cur.fetchall()
-            
+                result = cur.fetchone()
+            elif fetch_all:
+                result = cur.fetchall()
+
             conn.commit()
-            return None
+
+            return result
     except Exception as e:
         conn.rollback()
         print(f"Database Error: {e}")
