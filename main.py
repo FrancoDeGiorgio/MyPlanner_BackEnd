@@ -381,7 +381,7 @@ def create_task(
     VALUES (%s, %s, %s, %s) 
     RETURNING id, tenant_id, description, date_time, completed, created_at
     """
-    params = (tenant_id, task.description, task.date_time, task.completed)
+    params = (str(tenant_id), task.description, task.date_time, task.completed)
     
     # Esegue la query, impostando il contesto RLS
     result = execute_protected_query(conn, username, sql_query, params, fetch_one=True)
@@ -422,7 +422,7 @@ def update_task(
     WHERE id = %s 
     RETURNING id, tenant_id, description, date_time, completed, created_at
     """
-    params = (task_update.description, task_update.date_time, task_update.completed, task_id)
+    params = (task_update.description, task_update.date_time, task_update.completed, str(task_id))
 
     # Esegue la query, impostando il contesto RLS
     result = execute_protected_query(conn, username, sql_query, params, fetch_one=True)
@@ -454,7 +454,7 @@ def delete_task(
     cancellare solo le proprie attività.
     """
     sql_query = "DELETE FROM tasks WHERE id = %s RETURNING id"
-    params = (task_id,)
+    params = (str(task_id),)
 
     # Esegue la query, impostando il contesto RLS
     result = execute_protected_query(conn, username, sql_query, params, fetch_one=True)
