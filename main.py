@@ -3,7 +3,7 @@ Applicazione FastAPI principale - Planner Attività Multi-Tenant con RLS.
 Struttura modulare con router separati per autenticazione e gestione tasks.
 """
 from fastapi import FastAPI
-
+from fastapi.middleware.cors import CORSMiddleware
 from routers import auth, tasks
 
 # --- INIZIALIZZAZIONE APP FASTAPI ---
