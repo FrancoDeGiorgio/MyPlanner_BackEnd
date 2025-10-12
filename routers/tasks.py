@@ -37,12 +37,16 @@ def read_tasks(
     for row in results:
         try:
             tasks.append(Task(
-                id=UUID(row[0]),
+                iid=UUID(row[0]),
                 tenant_id=UUID(row[1]),
-                description=row[2],
-                date_time=row[3],
-                completed=row[4],
-                created_at=row[5],
+                title=row[2],
+                description=row[3],
+                color=row[4],
+                date_time=row[5],
+                end_time=row[6],
+                duration_minutes=row[7],
+                completed=row[8],
+                created_at=row[9],
             ))
         except Exception as e:
             # Gestisce eventuali errori di conversione
@@ -69,11 +73,20 @@ def create_task(
         )
 
     sql_query = """
-    INSERT INTO tasks (tenant_id, description, date_time, completed) 
-    VALUES (%s, %s, %s, %s) 
-    RETURNING id, tenant_id, description, date_time, completed, created_at
+        INSERT INTO tasks (tenant_id, title, description, color, date_time, end_time, duration_minutes, completed)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id, tenant_id, title, description, color, date_time, end_time, duration_minutes, completed, created_at
     """
-    params = (str(tenant_id), task.description, task.date_time, task.completed)
+    params = (
+       str(tenant_id),
+        task.title,
+        task.description,
+        task.color,
+        task.date_time,
+        task.end_time,
+        task.duration_minutes,
+        task.completed,
+        )
     
     # Esegue la query, impostando il contesto RLS
     result = execute_protected_query(conn, username, sql_query, params, fetch_one=True)
@@ -88,10 +101,14 @@ def create_task(
     return Task(
         id=UUID(result[0]),
         tenant_id=UUID(result[1]),
-        description=result[2],
-        date_time=result[3],
-        completed=result[4],
-        created_at=result[5],
+        title=result[2],
+        description=result[3],
+        color=result[4],
+        date_time=result[5],
+        end_time=result[6],
+        duration_minutes=result[7],
+        completed=result[8],
+        created_at=result[9],
     )
 
 
@@ -110,12 +127,27 @@ def update_task(
     # anche richiesto dalla clausola WITH CHECK della tua Policy UPDATE.
 
     sql_query = """
-    UPDATE tasks 
-    SET description = %s, date_time = %s, completed = %s 
-    WHERE id = %s 
-    RETURNING id, tenant_id, description, date_time, completed, created_at
+        UPDATE tasks
+        SET title = %s,
+            description = %s,
+            color = %s,
+            date_time = %s,
+            end_time = %s,
+            duration_minutes = %s,
+            completed = %s
+        WHERE id = %s
+        RETURNING id, tenant_id, title, description, color, date_time, end_time, duration_minutes, completed, created_at
     """
-    params = (task_update.description, task_update.date_time, task_update.completed, str(task_id))
+    params = (
+        task_update.title,
+        task_update.description,
+        task_update.color,
+        task_update.date_time,
+        task_update.end_time,
+        task_update.duration_minutes,
+        task_update.completed,
+        str(task_id),
+    )
 
     # Esegue la query, impostando il contesto RLS
     result = execute_protected_query(conn, username, sql_query, params, fetch_one=True)
@@ -130,10 +162,14 @@ def update_task(
     return Task(
         id=UUID(result[0]),
         tenant_id=UUID(result[1]),
-        description=result[2],
-        date_time=result[3],
-        completed=result[4],
-        created_at=result[5],
+        title=result[2],
+        description=result[3],
+        color=result[4],
+        date_time=result[5],
+        end_time=result[6],
+        duration_minutes=result[7],
+        completed=result[8],
+        created_at=result[9],
     )
 
 
