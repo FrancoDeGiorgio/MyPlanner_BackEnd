@@ -233,7 +233,7 @@ sequenceDiagram
   
   U->>API: POST /tasks (Bearer token, task data)
   API->>API: Verifica JWT, estrae username
-  API->>DB: SET role authenticated; SET request.jwt.claim.sub
+  API->>DB: SET role authenticated, SET request.jwt.claim.sub 
   API->>DB: INSERT INTO tasks (tenant_id, title, description, color, ...)
   DB-->>API: Task creata (con RLS check)
   API-->>U: Task object (201 Created)

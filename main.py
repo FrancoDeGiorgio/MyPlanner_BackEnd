@@ -22,7 +22,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",              # Sviluppo locale
         "https://*.vercel.app",               # Tutte le app Vercel
-        "*"                                   # Temporaneo: accetta da qualsiasi origine
+        #"*"                                   # Temporaneo: accetta da qualsiasi origine
     ],
     allow_credentials=True,
     allow_methods=["*"],      # Permette GET, POST, PUT, DELETE, ecc.
