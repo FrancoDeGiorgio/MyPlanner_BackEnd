@@ -24,7 +24,7 @@ def read_tasks(
     Restituisce solo le attività associate all'utente autenticato,
     grazie all'applicazione dell'RLS.
     """
-    sql_query = "SELECT id, tenant_id, description, date_time, completed, created_at FROM tasks ORDER BY date_time DESC"
+    sql_query = "SELECT id, tenant_id, title, description, color, date_time, end_time, duration_minutes, completed, created_at FROM tasks ORDER BY date_time DESC"
     
     # Esegue la query, impostando il contesto RLS
     results = execute_protected_query(conn, username, sql_query, fetch_all=True)
@@ -37,7 +37,7 @@ def read_tasks(
     for row in results:
         try:
             tasks.append(Task(
-                iid=UUID(row[0]),
+                id=UUID(row[0]),
                 tenant_id=UUID(row[1]),
                 title=row[2],
                 description=row[3],
