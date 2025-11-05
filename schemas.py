@@ -1,65 +1,42 @@
 """
-Modelli Pydantic (schemi dati) per validazione input/output API.
+DEPRECATO: Questo file è stato sostituito dall'architettura a domini.
+
+Gli schemi Pydantic sono stati spostati nei rispettivi domini:
+- Auth schemas: domains/auth/schemas.py
+  * Token, TokenData, UserBase, UserCreate
+  
+- Tasks schemas: domains/tasks/schemas.py
+  * TaskBase, TaskCreate, Task, ColorLiteral
+
+PER COMPATIBILITÀ TEMPORANEA:
+Se hai codice legacy che importa da questo file, aggiorna gli import:
+
+Vecchio import:
+    from schemas import Token, UserCreate
+
+Nuovo import:
+    from domains.auth.schemas import Token, UserCreate
+
+Vecchio import:
+    from schemas import Task, TaskCreate
+
+Nuovo import:
+    from domains.tasks.schemas import Task, TaskCreate
+
+QUESTO FILE SARÀ RIMOSSO IN UNA VERSIONE FUTURA.
 """
-from datetime import datetime
-from typing import Optional, Literal
-from uuid import UUID
-from pydantic import BaseModel, Field, field_validator, model_validator
 
+# Import temporanei per backward compatibility (da rimuovere dopo migrazione completa)
+from domains.auth.schemas import Token, TokenData, UserBase, UserCreate
+from domains.tasks.schemas import TaskBase, TaskCreate, Task, ColorLiteral
 
-class Token(BaseModel):
-    """Schema per il token JWT restituito dopo il login."""
-    access_token: str
-    token_type: str = "bearer"
-
-
-class TokenData(BaseModel):
-    """Schema per i dati contenuti nel JWT (il 'sub' è il name_user)."""
-    username: Optional[str] = None
-
-
-class UserBase(BaseModel):
-    """Schema di base per l'utente (usato per login/registrazione)."""
-    name_user: str = Field(..., description="Nome utente unico (usato come Subject JWT)")
-
-
-class UserCreate(UserBase):
-    """Schema per la registrazione."""
-    password: str
-
-ColorLiteral = Literal["green", "purple", "orange", "cyan", "pink", "yellow"]
-
-class TaskBase(BaseModel):
-    """Schema di base per l'attività."""
-    title: str = Field(..., min_length=1, max_length=150)
-    description: str = Field(..., min_length=1, max_length=255)
-    color: ColorLiteral = Field(default="green")
-    date_time: datetime
-    end_time: Optional[datetime] = None
-    duration_minutes: Optional[int] = Field(default=None, ge=5, le=1440)
-    completed: bool = False
-
-    @model_validator(mode="after")
-    def check_time_constraints(self):
-        if self.end_time and self.duration_minutes:
-            raise ValueError("Puoi impostare solo end_time oppure duration_minutes, non entrambi.")
-        if self.end_time and self.end_time <= self.date_time:
-            raise ValueError("La data di fine deve essere successiva alla data di inizio.")
-        return self
-
-
-class TaskCreate(TaskBase):
-    """Schema per la creazione di una nuova attività."""
-    pass  # Nessun tenant_id in input: il backend lo imposta!
-
-
-class Task(TaskBase):
-    """Schema completo dell'attività (inclusi gli ID di sistema)."""
-    id: UUID
-    tenant_id: UUID
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
+__all__ = [
+    "Token",
+    "TokenData",
+    "UserBase",
+    "UserCreate",
+    "TaskBase",
+    "TaskCreate",
+    "Task",
+    "ColorLiteral"
+]

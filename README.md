@@ -21,35 +21,163 @@ Backend FastAPI per **My Planner**, piattaforma multi-tenant di gestione delle a
 
 ## 🗂️ Struttura Progetto
 
+Il backend è organizzato secondo **architettura a layer per dominio**, separando le responsabilità tra API Layer, Service Layer, Repository Layer e Model Layer.
 
 ```
 MyPlanner_BackEnd/
-├── main.py # Entrypoint FastAPI, include router auth/tasks
-├── config.py # Config applicativa (lettura env, costanti)
-├── database.py # Connessione Postgres, helper execute_protected_query
-├── dependencies.py # Dipendenze condivise (es. get_current_user)
-├── security.py # Hash password, verifica, creazione JWT
-├── schemas.py # Modelli Pydantic per User, Token, Task
-├── routers/
-│ ├── auth.py # /auth/register, /auth/login
-│ └── tasks.py # /tasks CRUD con enforcement RLS
-├── requirements.txt # Dipendenze Python
-├── runtime.txt # Versione Python per il deploy (es. Render)
-└── README.md # Questo file
+├── main.py                    # Entrypoint FastAPI, registra router dei domini
+├── config.py                  # Config applicativa (lettura env, costanti)
+├── database.py                # Connessione Postgres, helper get_db_conn
+├── security.py                # Hash password, verifica, creazione JWT
+├── schemas.py                 # [DEPRECATO] Redirect ai domain schemas
+│
+├── domains/                   # Domini applicativi (uno per area funzionale)
+│   ├── auth/                  # Dominio Autenticazione
+│   │   ├── router.py          # API endpoints (POST /auth/register, /auth/login)
+│   │   ├── service.py         # Business logic (registrazione, login, JWT)
+│   │   ├── repository.py      # Data access (query su tabella users)
+│   │   ├── models.py          # Domain models (User entity)
+│   │   └── schemas.py         # DTO Pydantic (Token, UserCreate)
+│   │
+│   └── tasks/                 # Dominio Tasks
+│       ├── router.py          # API endpoints (CRUD /tasks)
+│       ├── service.py         # Business logic (coordinamento, validazioni)
+│       ├── repository.py      # Data access con RLS (query su tabella tasks)
+│       ├── models.py          # Domain models (Task entity con metodi)
+│       └── schemas.py         # DTO Pydantic (TaskCreate, Task)
+│
+├── core/                      # Utilities condivise tra domini
+│   ├── dependencies.py        # FastAPI dependencies (get_current_user)
+│   └── decorators.py          # Decorator @with_rls_context per RLS
+│
+├── tests/                     # Test suite (struttura, da implementare)
+│   ├── conftest.py            # Pytest fixtures (db_conn, test_user, etc.)
+│   ├── test_auth.py           # Test dominio Auth (Repository, Service, API)
+│   └── test_tasks.py          # Test dominio Tasks (Repository, Service, API, RLS)
+│
+├── requirements.txt           # Dipendenze Python
+├── runtime.txt                # Versione Python per deploy
+└── README.md                  # Questo file
 ```
+
+### 🏗️ Architettura a Layer
+
+Ogni dominio segue una struttura a 4 layer:
+
+1. **API Layer (router.py)**: Gestisce HTTP, valida input, serializza output
+2. **Service Layer (service.py)**: Business logic, orchestrazione, coordinamento
+3. **Repository Layer (repository.py)**: Accesso dati, query SQL, gestione RLS
+4. **Model & Schema Layer**: Entità dominio (models.py) e DTO API (schemas.py)
 
 ---
 
+## 🏛️ Architettura e Design Pattern
+
+### Separazione dei Layer
+
+Il backend implementa una **chiara separazione delle responsabilità**:
+
+#### 1. API Layer (Router)
+- **Responsabilità**: Interfaccia HTTP/REST con il mondo esterno
+- **Non contiene**: Business logic, query SQL, gestione RLS
+- **Fa solo**: Validazione input (Pydantic), chiamata al service, serializzazione output
+
+```python
+# Esempio: domains/tasks/router.py
+@router.post("", response_model=Task, status_code=201)
+def create_task(
+    task: TaskCreate,  # Validazione automatica Pydantic
+    username: str = Depends(get_current_user),  # Dependency injection
+    conn = Depends(get_db_conn)
+):
+    # Delega tutta la logica al service
+    return task_service.create_task(conn, username, task)
+```
+
+#### 2. Service Layer
+- **Responsabilità**: Business logic, orchestrazione, coordinamento tra repository
+- **Non contiene**: Query SQL, gestione connessione DB, dettagli HTTP
+- **Fa**: Validazioni business, recupero tenant_id, mapping tra layer
+
+```python
+# Esempio: domains/tasks/service.py
+def create_task(self, conn, username, task_create):
+    # 1. Business logic: recupera tenant_id
+    tenant_id = self.user_repo.get_user_id_by_username(conn, username)
+    
+    # 2. Validazione business rule
+    if not tenant_id:
+        raise HTTPException(404, "User not found")
+    
+    # 3. Delega al repository il salvataggio
+    task_dict = self.task_repo.create_task(conn, username, tenant_id, ...)
+    
+    # 4. Mappa su Pydantic model per API
+    return Task(**task_dict)
+```
+
+#### 3. Repository Layer
+- **Responsabilità**: Accesso ai dati, query SQL, gestione RLS
+- **Non contiene**: Business logic, validazioni, gestione HTTP
+- **Fa**: Query SQL, uso decorator RLS, gestione errori database
+
+```python
+# Esempio: domains/tasks/repository.py
+@with_rls_context  # Decorator applica automaticamente RLS!
+def create_task(self, conn, username, tenant_id, title, ...):
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO tasks (tenant_id, title, ...)
+            VALUES (%s, %s, ...)
+            RETURNING *
+        """, (str(tenant_id), title, ...))
+        return cur.fetchone()
+```
+
+#### 4. Model & Schema Layer
+- **Models (models.py)**: Entità di dominio pure, logica di dominio
+- **Schemas (schemas.py)**: DTO per API, validazione input/output
+
+### Decorator @with_rls_context
+
+Il decorator `@with_rls_context` in `core/decorators.py` è il **cuore della sicurezza multi-tenant**:
+
+```python
+@with_rls_context
+def get_all_tasks(self, conn, username):
+    # Il decorator configura automaticamente:
+    # 1. SET role authenticated
+    # 2. SET request.jwt.claim.sub = username
+    # 3. Esegue la query con RLS attivo
+    # 4. Gestisce commit/rollback
+    pass
+```
+
+**Come funziona**:
+1. Intercetta la chiamata al metodo repository
+2. Configura il contesto PostgreSQL RLS:
+   - Imposta ruolo `authenticated`
+   - Configura claim JWT `sub` con username
+   - Configura claim JWT `role`
+3. Esegue la funzione originale (query SQL)
+4. Gestisce transazione (commit su successo, rollback su errore)
+
+**Vantaggi**:
+- ✅ Zero duplicazione codice RLS nei repository
+- ✅ Impossibile dimenticare di applicare RLS (decorator obbligatorio)
+- ✅ Gestione centralizzata errori e transazioni
+- ✅ Testing più facile (mock del decorator)
 
 ---
 
 ## 🔐 Sicurezza & Multi-Tenant
 
 - **JWT**: il claim `sub` contiene `name_user`, utilizzato per impostare la variabile di contesto RLS `request.jwt.claim.sub` lato database.
-- **Row-Level Security**: tutte le query sulle task passano da `execute_protected_query()` che:
+- **Row-Level Security**: tutte le query sulle task usano il decorator `@with_rls_context` che:
   1. Imposta il ruolo `authenticated` per attivare le policy RLS.
   2. Imposta `request.jwt.claim.sub` con l'username autenticato.
   3. Esegue la query entro una transazione, rispettando le policy RLS.
+  4. Gestisce automaticamente commit/rollback.
 - **Password hashing**: Bcrypt tramite Passlib (versione 1.7.4 + bcrypt 4.0.1).
 - **Gestione errori**: rollback automatico su eccezioni, risposta HTTP coerente con FastAPI.
 - **CORS**: configurato per permettere richieste da frontend locale (localhost:3000) e deploy Vercel.
@@ -243,23 +371,68 @@ sequenceDiagram
 
 ## ✅ Testing & Debug
 
+### Test Automatici
+
+La struttura test è presente in `tests/` ma l'implementazione è TODO:
+
+```bash
+# Installare pytest
+pip install pytest pytest-asyncio
+
+# Eseguire i test (quando implementati)
+pytest tests/ -v
+pytest tests/test_auth.py -v  # Solo test auth
+pytest tests/test_tasks.py -v  # Solo test tasks
+
+# Con coverage
+pytest --cov=domains --cov-report=html
+```
+
+**Struttura test per layer**:
+- `test_auth.py` e `test_tasks.py` contengono:
+  - **Repository tests**: query SQL e RLS
+  - **Service tests**: business logic e orchestrazione
+  - **API tests**: endpoint HTTP e validazione
+
+**Fixtures disponibili** (in `conftest.py`, da implementare):
+- `db_conn`: Connessione database test
+- `test_user`: Utente con credenziali note
+- `test_task`: Task di esempio
+- `auth_token`: JWT valido per test
+- `client`: TestClient FastAPI
+
+### Testing Manuale con Swagger UI
+
 - **Swagger UI**: prova tutti gli endpoint con payload completi
-  1. Registra utente: POST `/auth/register`
-  2. Login: POST `/auth/login` (copia il token)
-  3. Autorizza: clicca "Authorize" e incolla `Bearer <token>`
-  4. Crea task: POST `/tasks` con tutti i campi
+  1. Vai su `http://localhost:8000/docs`
+  2. Registra utente: POST `/auth/register`
+  3. Login: POST `/auth/login` (copia il token)
+  4. Autorizza: clicca "Authorize" e incolla `Bearer <token>`
+  5. Crea task: POST `/tasks` con tutti i campi
+  6. Testa CRUD: GET, PUT, DELETE `/tasks/{id}`
 
-- **Test RLS diretto con psql**:
-  ```sql
-  -- Simula contesto autenticato
-  SET role authenticated;
-  SELECT set_config('request.jwt.claim.sub', 'utente_demo', true);
-  
-  -- Verifica visibilità task
-  SELECT * FROM tasks;
-  ```
+### Test RLS Diretto con psql
 
-- **Logging**: `execute_protected_query` stampa errori durante sviluppo. Controlla console per errori di mapping.
+```sql
+-- Simula contesto autenticato
+SET role authenticated;
+SELECT set_config('request.jwt.claim.sub', 'utente_demo', true);
+
+-- Verifica visibilità task
+SELECT * FROM tasks;  -- Solo task del tenant 'utente_demo'
+
+-- Reset per testare altro utente
+RESET role;
+SET role authenticated;
+SELECT set_config('request.jwt.claim.sub', 'altro_utente', true);
+SELECT * FROM tasks;  -- Solo task di 'altro_utente'
+```
+
+### Debug e Logging
+
+- Il decorator `@with_rls_context` stampa errori durante sviluppo
+- Repository e service stampano su console errori di mapping/query
+- In produzione, sostituire `print()` con logging strutturato
 
 ---
 
@@ -322,15 +495,63 @@ Il codice ritenta la connessione fino a 5 volte con delay di 2 secondi. Se falli
 
 ---
 
+## 🔧 Estensibilità: Come Aggiungere un Nuovo Dominio
+
+Grazie all'architettura a layer per dominio, aggiungere nuove funzionalità è semplice e standardizzato.
+
+### Esempio: Aggiungere dominio "Projects"
+
+1. **Creare la struttura**:
+   ```bash
+   mkdir domains/projects
+   cd domains/projects
+   touch __init__.py router.py service.py repository.py models.py schemas.py
+   ```
+
+2. **Implementare i layer** (nell'ordine):
+   - **schemas.py**: Definire DTO (ProjectCreate, Project)
+   - **models.py**: Definire entità dominio (classe Project)
+   - **repository.py**: Implementare CRUD con `@with_rls_context`
+   - **service.py**: Implementare business logic
+   - **router.py**: Definire endpoint FastAPI
+
+3. **Registrare il router** in `main.py`:
+   ```python
+   from domains.projects import router as projects_router
+   app.include_router(projects_router.router)
+   ```
+
+4. **Aggiungere test** in `tests/test_projects.py`
+
+**Vantaggi**:
+- ✅ Isolamento completo: modifiche a un dominio non impattano altri
+- ✅ Riusabilità: service e repository condivisibili
+- ✅ Testabilità: ogni layer testabile indipendentemente
+- ✅ Consistenza: stessa struttura per tutti i domini
+
+---
+
 ## 📋 Roadmap
 
+### Test & Quality
+- [ ] Implementare test suite completa (pytest con fixtures DB)
+- [ ] Test coverage > 80% per service e repository layer
+- [ ] Test di integrazione end-to-end con database reale
+- [ ] Test specifici per RLS e isolamento tenant
+
+### Features
 - [ ] Endpoint aggregazioni (statistiche per giorno/settimana/mese)
-- [ ] Test automatici con pytest (fixtures DB, test RLS)
 - [ ] Rate limiting per `/auth/login` (prevenzione brute force)
 - [ ] WebSocket/SSE per aggiornamenti realtime task
 - [ ] Endpoint PATCH per aggiornamenti parziali
 - [ ] Soft delete (campo `deleted_at` invece di DELETE)
 - [ ] Paginazione per GET `/tasks` (quando molte task)
+
+### Architettura
+- [ ] Logging strutturato (loguru o structlog)
+- [ ] Monitoring e metriche (Prometheus/Grafana)
+- [ ] Cache layer con Redis per query frequenti
+- [ ] Background jobs con Celery per operazioni async
 
 ---
 
