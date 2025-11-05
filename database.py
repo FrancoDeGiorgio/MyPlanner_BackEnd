@@ -28,7 +28,11 @@ def get_db_conn():
 
     # Analizza l'URI del database
     url = urlparse(DATABASE_URL)
-    
+
+    # Permetti override dei parametri di connessione via env per supportare ambienti diversi
+    sslmode = os.getenv("DB_SSLMODE", "require")
+    db_options = os.getenv("DB_OPTIONS", "-c pool_timeout=0")
+
     # Prepara i parametri di connessione
     conn_params = {
         'database': url.path[1:],
@@ -36,15 +40,16 @@ def get_db_conn():
         'password': url.password,
         'host': url.hostname,
         'port': url.port or 5432,  # Usa 5432 come fallback, ma vogliamo 6543
-        
-        # PARAMETRI CRITICI AGGIUNTI MANUALMENTE
-        # 1. Forza SSL, necessario per Supabase/Render
-        'sslmode': 'require',
-        # 2. Forza l'opzione PgBouncer per risolvere l'errore SASL.
-        # Questa opzione non può essere passata correttamente nella query string 
-        # dell'URI a causa di un bug di parsing di psycopg2.
-        'options': '-c pool_timeout=0'
     }
+
+    if sslmode:
+        # In ambienti gestiti (Supabase/Render) è tipicamente 'require'.
+        # In locale/container si può impostare a 'disable'.
+        conn_params['sslmode'] = sslmode
+
+    if db_options:
+        # Opzione necessaria per PgBouncer su Supabase, disattivabile in locale.
+        conn_params['options'] = db_options
 
     conn = None
     max_retries = 5

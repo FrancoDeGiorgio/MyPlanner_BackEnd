@@ -60,6 +60,10 @@ class UserRepository:
                 )
                 # Estrae l'UUID dalla prima colonna della riga restituita
                 user_id = cur.fetchone()[0]
+
+                # Commit esplicito: psycopg2 non usa autocommit di default.
+                # Senza questo commit la registrazione viene persa a fine richiesta.
+                conn.commit()
                 
                 return UUID(user_id) if isinstance(user_id, str) else user_id
                 
