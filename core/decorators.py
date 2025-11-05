@@ -5,8 +5,9 @@ Contiene principalmente il decorator @with_rls_context per gestire
 automaticamente il contesto Row-Level Security di PostgreSQL/Supabase.
 """
 from functools import wraps
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 import psycopg2
+from psycopg2.extensions import connection as PsycopgConnection
 from fastapi import HTTPException, status
 
 
@@ -62,18 +63,55 @@ def with_rls_context(func: Callable) -> Callable:
         HTTPException 500: Se si verifica un errore durante l'esecuzione della query
     """
     @wraps(func)
-    def wrapper(conn: psycopg2.connect, username: str, *args, **kwargs) -> Any:
+    def wrapper(*call_args, **kwargs) -> Any:
         """
         Wrapper interno che configura RLS ed esegue la funzione decorata.
         
         Args:
-            conn: Connessione psycopg2 al database PostgreSQL
-            username: Username dell'utente autenticato (da JWT)
-            *args, **kwargs: Parametri addizionali passati alla funzione originale
+            call_args: Argomenti posizionali passati alla funzione decorata
+            **kwargs: Argomenti keyword della funzione originale
         
         Returns:
             Any: Risultato della funzione repository originale
         """
+        bound_self: Optional[Any] = None
+        args_list = list(call_args)
+
+        # --- STEP 0: Estrai self (se presente), conn e username ---
+        if args_list:
+            first_arg = args_list[0]
+            if isinstance(first_arg, PsycopgConnection) or hasattr(first_arg, "cursor"):
+                # Funzione standalone: il primo argomento è la connessione
+                conn = args_list.pop(0)
+            else:
+                # Metodo di classe: il primo argomento è self
+                bound_self = args_list.pop(0)
+                if args_list:
+                    conn = args_list.pop(0)
+                else:
+                    conn = kwargs.pop("conn", None)
+        else:
+            conn = kwargs.pop("conn", None)
+
+        if conn is None:
+            raise TypeError(
+                f"{func.__name__}() requires a 'conn' argument complying with psycopg2 connection interface"
+            )
+
+        if not hasattr(conn, "cursor"):
+            raise TypeError(
+                f"Invalid connection object passed to {func.__name__}(): missing 'cursor' method"
+            )
+
+        if args_list:
+            username = args_list.pop(0)
+        else:
+            username = kwargs.pop("username", None)
+
+        if username is None:
+            raise TypeError(
+                f"{func.__name__}() requires a 'username' argument for RLS context"
+            )
         try:
             with conn.cursor() as cur:
                 # --- STEP 1: Imposta il ruolo PostgreSQL ---
@@ -104,7 +142,10 @@ def with_rls_context(func: Callable) -> Callable:
             # --- STEP 4: Esegui la funzione repository originale ---
             # A questo punto il contesto RLS è attivo e tutte le query
             # nella funzione repository saranno automaticamente filtrate
-            result = func(conn, username, *args, **kwargs)
+            if bound_self is not None:
+                result = func(bound_self, conn, username, *args_list, **kwargs)
+            else:
+                result = func(conn, username, *args_list, **kwargs)
             
             # --- STEP 5: Commit della transazione ---
             # Se tutto è andato a buon fine, confermiamo le modifiche
