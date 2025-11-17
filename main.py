@@ -23,6 +23,10 @@ from fastapi import FastAPI
 from app.api.routes import auth, tasks, postman, settings
 from app.api.middleware.cors import configure_cors
 from app.api.middleware.error_handler import configure_error_handlers
+from app.api.middleware.rate_limit import configure_rate_limiting
+from app.api.middleware.security_headers import configure_security_headers
+from app.api.middleware.audit import configure_audit_logging
+from app.api.middleware.csrf import configure_csrf_protection
 from app.utils.logger import configure_root_logger
 from app.core.config import APP_NAME, APP_VERSION
 
@@ -48,7 +52,19 @@ configure_root_logger()
 # 1. Error handlers (devono catturare errori da tutti gli altri middleware)
 configure_error_handlers(app)
 
-# 2. CORS (deve essere dopo error handlers per gestire preflight OPTIONS)
+# 2. Security headers (protezione XSS, clickjacking, HSTS)
+configure_security_headers(app)
+
+# 3. Rate limiting (protezione brute force e DoS)
+configure_rate_limiting(app)
+
+# 4. Audit logging (tracciamento operazioni critiche)
+configure_audit_logging(app)
+
+# 5. CSRF protection (deve essere prima di CORS per gestire cookie)
+configure_csrf_protection(app)
+
+# 6. CORS (deve essere dopo error handlers per gestire preflight OPTIONS)
 configure_cors(app)
 
 

@@ -13,7 +13,9 @@ I DTO non devono mai essere usati direttamente nel dominio o repository.
 Servono solo come contratto tra API e client.
 """
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.security import validate_password_strength
 
 
 class Token(BaseModel):
@@ -25,22 +27,41 @@ class Token(BaseModel):
     richieste successive come: "Authorization: Bearer <access_token>"
     
     Attributes:
-        access_token: Token JWT firmato contenente i claim dell'utente
+        access_token: Token JWT firmato contenente i claim dell'utente (durata breve)
+        refresh_token: Token JWT per ottenere un nuovo access token (durata lunga)
         token_type: Tipo di token, sempre "bearer" per OAuth2 Bearer tokens
     
     Example Response:
         {
             "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
             "token_type": "bearer"
         }
     """
     access_token: str = Field(
         ...,
-        description="Token JWT per autenticazione Bearer"
+        description="Token JWT per autenticazione Bearer (durata breve)"
+    )
+    refresh_token: str = Field(
+        ...,
+        description="Token JWT per refresh dell'access token (durata lunga)"
     )
     token_type: str = Field(
         default="bearer",
         description="Tipo di token OAuth2 (sempre 'bearer')"
+    )
+
+
+class RefreshTokenRequest(BaseModel):
+    """
+    Schema DTO per la richiesta di refresh token.
+    
+    Attributes:
+        refresh_token: Refresh token JWT valido
+    """
+    refresh_token: str = Field(
+        ...,
+        description="Refresh token JWT valido"
     )
 
 
@@ -105,16 +126,25 @@ class UserCreate(UserBase):
         }
     
     Security:
-        - La password viene validata solo per lunghezza minima
-        - Considerare l'aggiunta di validazioni più stringenti (lettere, numeri, simboli)
+        - La password viene validata per strength (min 8 char, maiuscole, numeri, simboli)
         - La password viene SEMPRE hashata dal service prima di salvare nel DB
     """
     password: str = Field(
         ...,
-        description="Password dell'utente (sarà hashata prima del salvataggio)",
-        min_length=6,
+        description="Password dell'utente (sarà hashata prima del salvataggio). "
+                   "Deve contenere almeno 8 caratteri, una maiuscola, una minuscola, un numero e un simbolo.",
+        min_length=8,
         max_length=100
     )
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        """Valida la complessità della password."""
+        is_valid, error_message = validate_password_strength(v)
+        if not is_valid:
+            raise ValueError(error_message)
+        return v
 
 
 class UserResponse(UserBase):

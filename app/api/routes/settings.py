@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
+from app.api.middleware.rate_limit import get_global_rate_limit
 from app.schemas.user_settings import (
     UserSettingsResponse,
     UserSettingsUpdate,
@@ -25,6 +26,7 @@ settings_service = UserSettingsService()
     "",
     response_model=UserSettingsResponse,
     summary="Recupera le impostazioni dell'utente autenticato",
+    dependencies=[Depends(get_global_rate_limit())]  # Rate limit globale: 100 req/min
 )
 def get_user_settings(
     username: str = Depends(get_current_user),
@@ -42,6 +44,7 @@ def get_user_settings(
     response_model=UserSettingsResponse,
     summary="Aggiorna le impostazioni dell'utente autenticato",
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(get_global_rate_limit())]  # Rate limit globale: 100 req/min
 )
 def update_user_settings(
     payload: UserSettingsUpdate,

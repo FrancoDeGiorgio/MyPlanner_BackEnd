@@ -13,6 +13,7 @@ from fastapi import HTTPException, status
 # Import aggiornati per SQLAlchemy
 from app.repositories.task_repository import TaskRepository
 from app.repositories.user_repository import UserRepository
+from app.utils.sanitizer import sanitize_html
 from app.models.task import Task
 
 
@@ -121,13 +122,16 @@ class TaskService:
                 detail=f"User '{username}' not found in the system. Cannot create task."
             )
         
-        # STEP 3: Chiama il repository per creare la task
+        # STEP 3: Sanitizza la description HTML per prevenire XSS
+        sanitized_description = sanitize_html(description)
+        
+        # STEP 4: Chiama il repository per creare la task
         task = self.task_repo.create_task(
             db=db,
             username=username,
             tenant_id=tenant_id,
             title=title,
-            description=description,
+            description=sanitized_description,
             color=color,
             date_time=date_time,
             end_time=end_time,
@@ -183,13 +187,16 @@ class TaskService:
             - Il tenant_id NON viene modificato (per sicurezza)
             - Validazioni Pydantic già applicate dal router
         """
-        # STEP 1: Chiama il repository per aggiornare
+        # STEP 1: Sanitizza la description HTML per prevenire XSS
+        sanitized_description = sanitize_html(description)
+        
+        # STEP 2: Chiama il repository per aggiornare
         task = self.task_repo.update_task(
             db=db,
             username=username,
             task_id=task_id,
             title=title,
-            description=description,
+            description=sanitized_description,
             color=color,
             date_time=date_time,
             end_time=end_time,
@@ -197,7 +204,7 @@ class TaskService:
             completed=completed
         )
         
-        # STEP 2: Verifica che l'update sia riuscito
+        # STEP 3: Verifica che l'update sia riuscito
         if task is None:
             # La task non esiste o l'RLS ha bloccato l'accesso
             raise HTTPException(
@@ -205,7 +212,7 @@ class TaskService:
                 detail=f"Task with ID {task_id} not found or you do not have permission to update it."
             )
         
-        # STEP 3: Restituisce l'oggetto Task ORM aggiornato
+        # STEP 4: Restituisce l'oggetto Task ORM aggiornato
         return task
     
     def delete_task(

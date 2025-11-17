@@ -5,13 +5,16 @@ Questo modulo centralizza tutte le operazioni di sicurezza:
 - Hashing e verifica password con bcrypt
 - Creazione e decodifica token JWT
 - Schema OAuth2 per autenticazione Bearer
+- Validazione password strength
 
 Security Best Practices implementate:
 - Bcrypt per hashing password (salt automatico, configurabile cost factor)
 - JWT con firma HMAC-SHA256 e scadenza configurabile
 - Password mai salvate o loggate in chiaro
 - Timing-safe comparison per verifica password
+- Password strength validation (min 8 char, maiuscole, numeri, simboli)
 """
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -20,21 +23,71 @@ from jose import jwt
 from fastapi.security import OAuth2PasswordBearer
 
 # Import della configurazione dal modulo core
-from app.core.config import SECRET_KEY, ALGORITHM
+from app.core.config import (
+    SECRET_KEY, 
+    ALGORITHM, 
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    JWT_ISSUER,
+    JWT_AUDIENCE
+)
 
 
 # --- CONFIGURAZIONE HASHING PASSWORD ---
-# Usa bcrypt come algoritmo di hashing, con deprecazione automatica
-# degli schemi vecchi se necessario un aggiornamento in futuro
+# Usa bcrypt come algoritmo di hashing con cost factor esplicito
+# Cost factor 12 = 2^12 = 4096 iterazioni (sicuro ma non troppo lento)
+# Range consigliato: 12-14 (12 per bilanciare sicurezza/performance)
 pwd_context = CryptContext(
     schemes=["bcrypt"],
-    deprecated="auto"
+    deprecated="auto",
+    bcrypt__rounds=12  # Cost factor esplicito: 12 rounds (2^12 iterazioni)
 )
 
 # --- SCHEMA OAUTH2 ---
 # Definisce lo schema di autenticazione OAuth2 Password Bearer
 # Il tokenUrl indica dove il client può ottenere il token (endpoint login)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+
+
+def validate_password_strength(password: str) -> tuple[bool, Optional[str]]:
+    """
+    Valida la complessità della password secondo criteri di sicurezza.
+    
+    Requisiti password:
+    - Minimo 8 caratteri
+    - Almeno una lettera maiuscola
+    - Almeno una lettera minuscola
+    - Almeno un numero
+    - Almeno un carattere speciale (!@#$%^&*()_+-=[]{}|;:,.<>?)
+    
+    Args:
+        password: Password da validare
+    
+    Returns:
+        tuple[bool, Optional[str]]: (True, None) se valida, (False, messaggio_errore) se invalida
+    
+    Example:
+        >>> validate_password_strength("MyPass123!")
+        (True, None)
+        >>> validate_password_strength("weak")
+        (False, "La password deve contenere almeno 8 caratteri")
+    """
+    if len(password) < 8:
+        return False, "La password deve contenere almeno 8 caratteri"
+    
+    if not re.search(r'[A-Z]', password):
+        return False, "La password deve contenere almeno una lettera maiuscola"
+    
+    if not re.search(r'[a-z]', password):
+        return False, "La password deve contenere almeno una lettera minuscola"
+    
+    if not re.search(r'\d', password):
+        return False, "La password deve contenere almeno un numero"
+    
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]', password):
+        return False, "La password deve contenere almeno un carattere speciale (!@#$%^&*()_+-=[]{}|;:,.<>?)"
+    
+    return True, None
 
 
 def hash_password(password: str) -> str:
@@ -99,18 +152,18 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
-    Crea un token JWT firmato con i dati forniti.
+    Crea un token JWT di accesso firmato con i dati forniti.
     
     Il token JWT include:
     - Payload personalizzato (es. {"sub": "username"})
-    - Timestamp di scadenza (exp claim)
+    - Standard claims: iss, aud, exp, iat, nbf
     - Firma HMAC-SHA256 per integrità e autenticità
     
     Args:
         data: Dizionario con i claim da includere nel token
               Tipicamente include almeno "sub" (subject) con l'username
         expires_delta: Durata validità del token (timedelta)
-                      Se None, usa 15 minuti di default
+                      Se None, usa ACCESS_TOKEN_EXPIRE_MINUTES dalla config
     
     Returns:
         str: Token JWT firmato, formato base64url
@@ -122,8 +175,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         ...     data={"sub": "mario_rossi"},
         ...     expires_delta=timedelta(minutes=30)
         ... )
-        >>> print(token)
-        eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtYXJpb19yb3NzaSIsImV4cCI6MTYzOTU4NzYwMH0.abc123...
     
     Security Note:
         - Il token è firmato ma NON criptato: il payload è leggibile
@@ -132,27 +183,142 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         - SECRET_KEY deve essere robusta e mai esposta
     
     JWT Claims inclusi:
-        - Custom claims: tutti i dati passati nel parametro 'data'
+        - sub (subject): username dell'utente
+        - iss (issuer): JWT_ISSUER dalla config
+        - aud (audience): JWT_AUDIENCE dalla config
         - exp (expiration): timestamp di scadenza
-        - (opzionale) iat (issued at): quando aggiunto automaticamente da alcune librerie
+        - iat (issued at): timestamp di creazione
+        - nbf (not before): timestamp di validità (stesso di iat)
     """
     # Copia i dati per non modificare il dizionario originale
     to_encode = data.copy()
     
+    # Timestamp corrente
+    now = datetime.utcnow()
+    
     # Calcola il timestamp di scadenza
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = now + expires_delta
     else:
-        # Default: 15 minuti se non specificato
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        # Default: ACCESS_TOKEN_EXPIRE_MINUTES dalla config
+        expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    # Aggiungi il claim 'exp' (expiration time)
-    # Le librerie JWT lo verificano automaticamente alla decodifica
-    to_encode.update({"exp": expire})
+    # Aggiungi standard JWT claims per validazione rigorosa
+    to_encode.update({
+        "exp": expire,                    # Expiration time
+        "iat": now,                       # Issued at
+        "nbf": now,                       # Not before (valido da subito)
+        "iss": JWT_ISSUER,                # Issuer
+        "aud": JWT_AUDIENCE,              # Audience
+        "type": "access"                   # Tipo di token (per distinguere da refresh)
+    })
     
     # Genera il token JWT firmato
     # jwt.encode() crea: header.payload.signature (tutto in base64url)
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     
     return encoded_jwt
+
+
+def create_refresh_token(data: dict) -> str:
+    """
+    Crea un refresh token JWT con durata più lunga rispetto all'access token.
+    
+    Il refresh token viene usato per ottenere un nuovo access token senza
+    richiedere nuovamente le credenziali dell'utente.
+    
+    Args:
+        data: Dizionario con i claim da includere nel token
+              Deve includere almeno "sub" (subject) con l'username
+    
+    Returns:
+        str: Refresh token JWT firmato
+    
+    Security Note:
+        - Refresh token ha durata più lunga (7 giorni di default)
+        - Dovrebbe essere salvato in httpOnly cookie o secure storage
+        - Non dovrebbe essere esposto in localStorage (più sicuro in cookie)
+    """
+    # Copia i dati per non modificare il dizionario originale
+    to_encode = data.copy()
+    
+    # Timestamp corrente
+    now = datetime.utcnow()
+    
+    # Refresh token ha durata più lunga (7 giorni di default)
+    expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    
+    # Aggiungi standard JWT claims
+    to_encode.update({
+        "exp": expire,                    # Expiration time
+        "iat": now,                       # Issued at
+        "nbf": now,                       # Not before
+        "iss": JWT_ISSUER,                # Issuer
+        "aud": JWT_AUDIENCE,              # Audience
+        "type": "refresh"                  # Tipo di token
+    })
+    
+    # Genera il refresh token JWT firmato
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    return encoded_jwt
+
+
+def verify_token(token: str, token_type: str = "access") -> dict:
+    """
+    Verifica e decodifica un token JWT con validazione completa.
+    
+    Valida:
+    - Firma del token (HMAC-SHA256)
+    - Expiration time (exp)
+    - Not before (nbf)
+    - Issuer (iss)
+    - Audience (aud)
+    - Tipo di token (type)
+    
+    Args:
+        token: Token JWT da verificare
+        token_type: Tipo di token atteso ("access" o "refresh")
+    
+    Returns:
+        dict: Payload decodificato del token
+    
+    Raises:
+        jwt.ExpiredSignatureError: Se il token è scaduto
+        jwt.JWTClaimsError: Se i claim non sono validi (iss, aud, nbf)
+        jwt.JWTError: Se il token è invalido o la firma non corrisponde
+    
+    Example:
+        >>> payload = verify_token(token, token_type="access")
+        >>> username = payload.get("sub")
+    """
+    try:
+        # Decodifica e verifica il token con tutti i claim
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            issuer=JWT_ISSUER,
+            audience=JWT_AUDIENCE,
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_iss": True,
+                "verify_aud": True,
+                "verify_nbf": True
+            }
+        )
+        
+        # Verifica che il tipo di token corrisponda
+        if payload.get("type") != token_type:
+            raise jwt.JWTError(f"Token type mismatch: expected {token_type}, got {payload.get('type')}")
+        
+        return payload
+        
+    except jwt.ExpiredSignatureError:
+        raise jwt.ExpiredSignatureError("Token scaduto")
+    except jwt.JWTClaimsError as e:
+        raise jwt.JWTClaimsError(f"Claim non validi: {str(e)}")
+    except jwt.JWTError as e:
+        raise jwt.JWTError(f"Token invalido: {str(e)}")
 

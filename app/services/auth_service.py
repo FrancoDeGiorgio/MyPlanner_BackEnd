@@ -12,9 +12,16 @@ from fastapi import HTTPException, status
 
 # Import aggiornati per la nuova architettura
 from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import (
+    hash_password, 
+    verify_password, 
+    create_access_token,
+    create_refresh_token,
+    validate_password_strength
+)
 from app.repositories.user_repository import UserRepository
 from app.repositories.user_settings_repository import UserSettingsRepository
+from app.repositories.refresh_token_repository import RefreshTokenRepository
 
 
 class AuthService:
@@ -39,6 +46,7 @@ class AuthService:
         """
         self.repository = UserRepository()
         self.settings_repository = UserSettingsRepository()
+        self.refresh_token_repository = RefreshTokenRepository()
     
     def register_user(self, db: Session, name_user: str, password: str) -> Dict[str, any]:
         """
@@ -70,8 +78,17 @@ class AuthService:
         Security:
             - Usa bcrypt per hashing (tramite passlib in security.py)
             - Mai salvare o loggare password in chiaro
+            - Valida password strength prima di hashare
         """
-        # STEP 1: Hash della password usando bcrypt
+        # STEP 1: Valida password strength (già validata da Pydantic, ma doppio controllo)
+        is_valid, error_message = validate_password_strength(password)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=error_message
+            )
+        
+        # STEP 2: Hash della password usando bcrypt
         # La funzione hash_password in security.py usa passlib con bcrypt
         # che genera automaticamente un salt e applica molte iterazioni
         hashed_password = hash_password(password)
@@ -158,19 +175,30 @@ class AuthService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # STEP 4: Genera il token JWT
-        # Il token conterrà:
-        # - 'sub' (subject): l'username, usato poi per RLS
-        # - 'exp' (expiration): timestamp di scadenza
+        # STEP 4: Genera i token JWT (access e refresh)
+        # Access token: durata breve (30 minuti di default)
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": username},  # CRITICO: 'sub' deve contenere l'username!
             expires_delta=access_token_expires
         )
         
-        # STEP 5: Restituisce il token in formato OAuth2 standard
+        # Refresh token: durata lunga (7 giorni di default)
+        refresh_token = create_refresh_token(
+            data={"sub": username}
+        )
+        
+        # STEP 5: Salva il refresh token nel database per blacklist/rotation
+        self.refresh_token_repository.create_token(
+            db=db,
+            token=refresh_token,
+            user_id=user.id
+        )
+        
+        # STEP 6: Restituisce i token in formato OAuth2 standard
         return {
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer"  # Lowercase per standard OAuth2
         }
 

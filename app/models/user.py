@@ -89,6 +89,13 @@ class User(Base):
         lazy="select"
     )
     
+    refresh_tokens = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="select"
+    )
+    
     def __repr__(self) -> str:
         """
         Rappresentazione string-safe dell'utente (senza password).

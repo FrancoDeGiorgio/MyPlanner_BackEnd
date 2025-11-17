@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, status
 # Import aggiornati per la nuova architettura
 from app.core.database import get_db
 from app.api.dependencies import get_current_user
+from app.api.middleware.rate_limit import get_global_rate_limit
 from app.schemas.task import Task, TaskCreate, TaskBase
 from app.services.task_service import TaskService
 
@@ -38,7 +39,8 @@ task_service = TaskService()
 @router.get(
     "",
     response_model=List[Task],
-    summary="Recupera tutte le task dell'utente autenticato"
+    summary="Recupera tutte le task dell'utente autenticato",
+    dependencies=[Depends(get_global_rate_limit())]  # Applica rate limit globale: 100 req/min
 )
 def read_tasks(
     username: str = Depends(get_current_user),
@@ -189,7 +191,8 @@ def create_task(
 @router.put(
     "/{task_id}",
     response_model=Task,
-    summary="Aggiorna una task esistente"
+    summary="Aggiorna una task esistente",
+    dependencies=[Depends(get_global_rate_limit())]  # Applica rate limit globale: 100 req/min
 )
 def update_task(
     task_id: UUID,
@@ -278,7 +281,8 @@ def update_task(
 @router.delete(
     "/{task_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Elimina una task"
+    summary="Elimina una task",
+    dependencies=[Depends(get_global_rate_limit())]  # Applica rate limit globale: 100 req/min
 )
 def delete_task(
     task_id: UUID,

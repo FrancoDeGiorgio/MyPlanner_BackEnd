@@ -11,3 +11,6 @@ pydantic[email]
 sqlalchemy>=2.0 # ORM per gestione database
 alembic # Gestione migrazioni database
 greenlet # Dependency per SQLAlchemy async support
+slowapi # Rate limiting per protezione brute force e DoS
+bleach==6.1.0 # HTML sanitization per prevenire XSS
+tinycss2 # Dipendenza richiesta da bleach per CSS sanitization

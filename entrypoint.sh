@@ -40,5 +40,9 @@ EOF
 fi
 
 echo "🚀 Starting FastAPI application..."
-exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+if [ "${ENVIRONMENT:-development}" = "production" ]; then
+  exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-4}
+else
+  exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+fi
 

@@ -34,19 +34,36 @@ if not DATABASE_URL:
     )
 
 # --- CONFIGURAZIONE JWT ---
-# CRITICO: In produzione usare una chiave segreta robusta e unica!
+# CRITICO: SECRET_KEY è OBBLIGATORIA in tutti gli ambienti per sicurezza!
 # Generare con: python -c "import secrets; print(secrets.token_urlsafe(32))"
-SECRET_KEY = os.environ.get(
-    "SECRET_KEY",
-    "IL_TUO_SEGRETO_JWT_SUPER_SICURO_FALLBACK"  # Fallback solo per sviluppo
-)
+SECRET_KEY = os.environ.get("SECRET_KEY")
+
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY è obbligatoria e deve essere impostata come variabile d'ambiente. "
+        "Genera una chiave sicura con: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
+
+# Valida che SECRET_KEY sia abbastanza lunga (minimo 32 caratteri)
+if len(SECRET_KEY) < 32:
+    raise RuntimeError(
+        f"SECRET_KEY deve essere almeno 32 caratteri (attuale: {len(SECRET_KEY)} caratteri). "
+        "Genera una chiave sicura con: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
 
 # Algoritmo di firma JWT (HS256 è lo standard per token simmetrici)
 ALGORITHM = "HS256"
 
 # Durata validità del token JWT in minuti
 # Dopo questo periodo l'utente dovrà rifare login
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
+# Refresh token expire (7 giorni)
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+
+# JWT Issuer e Audience per validazione rigorosa
+JWT_ISSUER = os.environ.get("JWT_ISSUER", "myplanner-api")
+JWT_AUDIENCE = os.environ.get("JWT_AUDIENCE", "myplanner-users")
 
 
 # --- CONFIGURAZIONE APPLICAZIONE ---
@@ -59,7 +76,7 @@ APP_VERSION = os.environ.get("APP_VERSION", "2.0.0")
 # Debug mode (disabilitare in produzione!)
 DEBUG = os.environ.get("DEBUG", "False").lower() in ("true", "1", "yes")
 
-# Ambiente di esecuzione
+# Ambiente di esecuzione (deve essere definito prima di SECRET_KEY per la validazione)
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")  # development, staging, production
 
 # Preferenze utente
