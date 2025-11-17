@@ -1,0 +1,14 @@
+-- =====================================================
+-- SCRIPT DI INIZIALIZZAZIONE DATABASE MYPLANNER
+-- =====================================================
+-- Questo file è eseguito automaticamente solo quando
+-- il volume dati del container Postgres viene creato.
+--
+-- Le migrazioni Alembic sono la fonte di verità per lo schema.
+-- Utilizzare questo file esclusivamente per dati seed opzionali.
+-- =====================================================
+
+-- ESEMPIO: inserimento dati di test (decommentare se necessario)
+-- INSERT INTO users (name_user, hashed_password)
+-- VALUES ('testuser', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyB3EJGYw4gi')
+-- ON CONFLICT (name_user) DO NOTHING;

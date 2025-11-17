@@ -1,10 +1,16 @@
 fastapi
 pydantic
 uvicorn
-psycopg2-binary # Driver per PostgreSQL
+psycopg2-binary # Driver per PostgreSQL (usato anche da SQLAlchemy)
 python-jose[cryptography] # Per JWT
 passlib[bcrypt]==1.7.4 
 bcrypt==4.0.1 # Forza la versione compatibile
 python-dotenv # Utile per caricare le variabili d'ambiente localmente
 python-multipart # Necessario per gestire form data (OAuth2)
 pydantic[email]
+sqlalchemy>=2.0 # ORM per gestione database
+alembic # Gestione migrazioni database
+greenlet # Dependency per SQLAlchemy async support
+slowapi # Rate limiting per protezione brute force e DoS
+bleach==6.1.0 # HTML sanitization per prevenire XSS
+tinycss2 # Dipendenza richiesta da bleach per CSS sanitization

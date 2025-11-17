@@ -1,0 +1,309 @@
+{
+  "info": {
+    "name": "MyPlanner API",
+    "description": "Collezione Postman per l'API MyPlanner (layered architecture con Auth + Tasks).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Root",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          },
+          "response": []
+        },
+        {
+          "name": "Welcome",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name_user\": \"{{seed_user}}\",\n  \"password\": \"{{seed_password}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register",
+            "description": "Registra un nuovo utente/tenant. Usa le variabili seed per creare un utente demo."
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{seed_user}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{seed_password}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Esegue il login dell'utente demo e salva automaticamente il token nell'ambiente."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.access_token) {",
+                  "    pm.environment.set('access_token', json.access_token);",
+                  "    pm.test('Token salvato nell\\'ambiente', function() {",
+                  "      pm.expect(pm.environment.get('access_token')).to.eql(json.access_token);",
+                  "    });",
+                  "  }",
+                  "} else {",
+                  "  pm.environment.unset('access_token');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "description": "Endpoint protetti da JWT per la gestione delle task dell'utente autenticato.",
+      "item": [
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/tasks",
+            "description": "Recupera tutte le task dell'utente corrente (JWT necessario)."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Demo task\",\n  \"description\": \"Task creata da Postman\",\n  \"color\": \"green\",\n  \"date_time\": \"{{current_date}}T09:00:00\",\n  \"duration_minutes\": 60,\n  \"completed\": false\n}"
+            },
+            "url": "{{baseUrl}}/tasks",
+            "description": "Crea una nuova task per il tenant corrente. Aggiorna current_date in base alle tue necessità."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Task",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Demo task aggiornata\",\n  \"description\": \"Task aggiornata da Postman\",\n  \"color\": \"purple\",\n  \"date_time\": \"{{current_date}}T11:00:00\",\n  \"duration_minutes\": 45,\n  \"completed\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{sample_task_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{sample_task_id}}"
+              ]
+            },
+            "description": "Aggiorna la task indicata dal sample_task_id. Popola la variabile con un ID valido prima di inviare."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{sample_task_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{sample_task_id}}"
+              ]
+            },
+            "description": "Elimina la task indicata da sample_task_id. Popola la variabile con l'UUID della task."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User Settings",
+      "description": "Impostazioni profilo utente (accent color, tema, lingua).",
+      "item": [
+        {
+          "name": "Get Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/settings",
+            "description": "Recupera le impostazioni dell'utente autenticato. Crea il record di default se mancante."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accent_color\": \"#7A5BFF\",\n  \"theme\": \"light\",\n  \"language\": \"it\"\n}"
+            },
+            "url": "{{baseUrl}}/settings",
+            "description": "Aggiorna le impostazioni dell'utente autenticato. Invia solo i campi da modificare."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const token = pm.environment.get('access_token');",
+          "if (token) {",
+          "  pm.request.headers.add({ key: 'Authorization', value: `Bearer ${token}` });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "{{baseUrl}}",
+      "type": "string"
+    },
+    {
+      "key": "seed_user",
+      "value": "{{seed_user}}",
+      "type": "string"
+    },
+    {
+      "key": "seed_password",
+      "value": "{{seed_password}}",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "{{access_token}}",
+      "type": "string"
+    },
+    {
+      "key": "sample_task_id",
+      "value": "{{sample_task_id}}",
+      "type": "string"
+    },
+    {
+      "key": "current_date",
+      "value": "2025-11-10",
+      "type": "string"
+    }
+  ]
+}
+
